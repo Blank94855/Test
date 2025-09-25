@@ -4,16 +4,15 @@ import {
   View,
   Text,
   TextInput,
-  ScrollView,
   StyleSheet,
   StatusBar,
-  TouchableOpacity,
   Platform,
   Linking,
+  FlatList, // <-- UPGRADED for smooth scrolling
+  KeyboardAvoidingView, // <-- ADDED to prevent keyboard issues
 } from 'react-native';
 
 // --- Configuration Object ---
-// This holds static and dynamic data for the terminal session.
 const config = {
   username: 'root',
   hostname: 'orbit',
@@ -53,7 +52,6 @@ const generateDynamicStorage = () => {
     };
 };
 
-// Generate random weather data
 const generateRandomWeather = () => {
     const locations = [ { city: "Tokyo", country: "Japan" }, { city: "London", country: "UK" }, { city: "New York", country: "USA" }, { city: "Sydney", country: "Australia" }, { city: "Bucharest", country: "Romania" } ];
     const conditions = [ "Clear skies", "Partly cloudy", "Overcast", "Light rain", "Heavy rain", "Thunderstorm", "Foggy", "Snowing", "Sunny", "Windy" ];
@@ -77,13 +75,12 @@ const App = () => {
   const [isSystemBricked, setSystemBricked] = useState(false);
   const [fontFamily, setFontFamily] = useState('monospace');
 
-  const scrollViewRef = useRef(null);
+  const flatListRef = useRef(null);
   const inputRef = useRef(null);
   
   const promptSymbol = `${config.username}@${config.hostname}:~$ `;
 
   // --- Command Definitions ---
-  // Commands now return structured data (arrays of objects) instead of HTML strings.
   const commands = {
     help: () => [
       { style: 'highlight', text: 'Available Commands:' },
@@ -133,7 +130,7 @@ const App = () => {
 
     echo: (args) => [{ text: args || 'Nothing to echo.' }],
     
-    date: () => [{ text: new Date().toLocaleString() }],
+    date: () => [{ text: new Date().toLocaleString('ro-RO', { dateStyle: 'full', timeStyle: 'long' }) }],
     
     neofetch: () => {
         const { totalDisk, freeDisk, totalRAM, freeRAM } = config.dynamicStorage;
@@ -149,7 +146,7 @@ const App = () => {
       /________________\\
         `;
         return [
-            { text: art, style: 'highlight' },
+            { text: art, style: 'highlight', preformatted: true },
             { text: `${config.systemInfo.os}@${config.username}`, style: 'highlight' },
             { text: '-----------------' },
             { text: `OS: ${config.systemInfo.os} ${config.systemInfo.version}` },
@@ -183,8 +180,7 @@ const App = () => {
     },
 
     software: () => {
-        // This command now returns a special object to be handled asynchronously.
-        return { type: 'async', action: 'software_update' };
+        return { action: 'async', type: 'software_update' };
     },
     
     weather: () => {
@@ -209,10 +205,8 @@ const App = () => {
     calc: (args) => {
         try {
             if (!args) return [{ text: "Usage: calc [expression]" }];
-            // Basic sanitization
             const safeArgs = args.replace(/[^-()\d/*+.]/g, '');
             if (!safeArgs) return [{ text: 'Error: Invalid characters in expression', style: 'error' }];
-            // Using Function constructor is a security risk in JS, but for this sandboxed app it's okay.
             const result = new Function(`return ${safeArgs}`)();
             return [{ text: `Result: ${result}` }];
         } catch (error) {
@@ -229,17 +223,8 @@ const App = () => {
     },
     
     fortune: () => {
-        const fortunes = [
-            "You will find a hidden treasure where you least expect it.",
-            "A beautiful, smart, and loving person will be coming into your life.",
-            "Your hard work is about to pay off.",
-            "A faithful friend is a strong defense.",
-            "A fresh start will put you on your way.",
-        ];
-        return [
-            { text: "Fortune says:", style: 'highlight' },
-            { text: fortunes[Math.floor(Math.random() * fortunes.length)] },
-        ];
+        const fortunes = ["You will find a hidden treasure.", "A beautiful, smart, and loving person will be coming into your life.", "Your hard work is about to pay off.", "A faithful friend is a strong defense."];
+        return [ { text: "Fortune says:", style: 'highlight' }, { text: fortunes[Math.floor(Math.random() * fortunes.length)] } ];
     },
     
     cowsay: (args) => {
@@ -255,57 +240,50 @@ const App = () => {
                 ||----w |
                 ||     ||
         `;
-        return [{ text: `${topLine}\n${textLine}\n${bottomLine}${cow}` }];
+        return [{ text: `${topLine}\n${textLine}\n${bottomLine}${cow}`, preformatted: true }];
     },
 
     reboot: () => {
-        return { type: 'async', action: 'reboot_system' };
+        return { action: 'async', type: 'reboot_system' };
     },
   };
 
-  // --- Boot Sequence Simulation ---
   const runBootSequence = () => {
-    const bootMessages = [
-      "Starting system...", "Loading kernel modules...", "Mounting /system...",
-      "Starting services...", "Starting zygote...", "Boot completed."
-    ];
+    const bootMessages = ["Starting system...", "Loading kernel modules...", "Mounting /system...", "Starting services...", "Boot completed."];
     let currentOutput = [];
-    
     bootMessages.forEach((msg, index) => {
       setTimeout(() => {
-        currentOutput = [...currentOutput, { type: 'response', content: [{ text: `[${index+1}/${bootMessages.length}] ${msg}`, style: 'highlight' }] }];
+        currentOutput.push({ id: Date.now() + index, type: 'response', content: [{ text: `[${index+1}/${bootMessages.length}] ${msg}`, style: 'highlight' }] });
         setOutput([...currentOutput]);
       }, 200 * (index + 1));
     });
-
     setTimeout(() => {
-      const finalContent = [
-        { type: 'response', content: [{ text: 'Welcome to OrbitOS', style: 'highlight' }] },
-        { type: 'response', content: [{ text: "Type 'help' for a list of commands" }] },
-        { type: 'response', content: [{ text: '⚠️ WARNING: You are running a BETA version!', style: 'error' }] }
-      ];
-      setOutput(prev => [...prev, ...finalContent]);
+      setOutput(prev => [
+        ...prev, 
+        { id: Date.now() + 100, type: 'response', content: [{ text: 'Welcome to OrbitOS', style: 'highlight' }] },
+        { id: Date.now() + 101, type: 'response', content: [{ text: "Type 'help' for a list of commands" }] }
+      ]);
       setSystemBricked(false);
       inputRef.current?.focus();
     }, 200 * (bootMessages.length + 2));
   };
   
-  // Run on initial mount
   useEffect(() => {
     generateDynamicStorage();
     runBootSequence();
   }, []);
   
-  // --- Command Execution Logic ---
   const handleCommand = (command) => {
     if (isSystemBricked) {
-        setOutput(prev => [...prev, { type: 'response', content: [{ text: 'System halted. Please reboot.', style: 'error' }] }]);
+        setOutput(prev => [...prev, { id: Date.now(), type: 'response', content: [{ text: 'System halted. Please reboot.', style: 'error' }] }]);
         return;
     }
 
     const trimmedCommand = command.trim();
+    const newOutput = [...output, { id: Date.now() + 1, type: 'command', text: `${promptSymbol}${trimmedCommand}` }];
+    
     if (trimmedCommand) {
-      if (commandHistory[commandHistory.length - 1] !== trimmedCommand) {
+      if (!commandHistory.includes(trimmedCommand)) {
         setCommandHistory(prev => [...prev, trimmedCommand]);
       }
       setHistoryIndex(commandHistory.length);
@@ -313,56 +291,40 @@ const App = () => {
       const [cmd, ...args] = trimmedCommand.split(' ');
       const commandFunc = commands[cmd.toLowerCase()];
       
-      const newOutput = [...output, { type: 'command', text: `${promptSymbol}${trimmedCommand}` }];
-      
       if (commandFunc) {
         const response = commandFunc(args.join(' '));
-        // Handle asynchronous commands
-        if (response && response.type === 'async') {
-            if(response.action === 'software_update') {
-                newOutput.push({ type: 'response', content: [{ text: 'Checking for updates...', style: 'success' }] });
-                setTimeout(() => {
-                    setOutput(prev => [...prev, { type: 'response', content: [
-                        { text: 'No new updates found.', style: 'error' },
-                        { text: 'Last successful update: September 23, 2025' },
-                        { text: 'Version 3.5.1' },
-                        { text: 'OrbitOS 3.5 mobile upgrade:' },
-                        { text: ' - Now running on native Android!' },
-                        { text: ' - Added mobile-friendly history navigation.' },
-                    ] }]);
-                }, 1500);
-            } else if (response.action === 'reboot_system') {
-                newOutput.push({ type: 'response', content: [{ text: 'Rebooting system...' }] });
-                setOutput(newOutput); // Update UI before delay
-                setTimeout(() => {
-                    setOutput([]);
-                    runBootSequence();
-                }, 1500);
-                return; // Stop further processing
+        if (response && response.action === 'async') {
+            if(response.type === 'software_update') {
+                newOutput.push({ id: Date.now() + 2, type: 'response', content: [{ text: 'Checking for updates...', style: 'success' }] });
+                setTimeout(() => setOutput(prev => [...prev, { id: Date.now() + 3, type: 'response', content: [{ text: 'No new updates found.', style: 'error' }] }]), 1500);
+            } else if (response.type === 'reboot_system') {
+                newOutput.push({ id: Date.now() + 4, type: 'response', content: [{ text: 'Rebooting system...' }] });
+                setOutput(newOutput);
+                setTimeout(() => { setOutput([]); runBootSequence(); }, 1500);
+                return;
             }
-        } else if (response.length > 0) {
-            newOutput.push({ type: 'response', content: response });
+        } else if (response && response.length > 0) {
+            newOutput.push({ id: Date.now() + 5, type: 'response', content: response });
         }
       } else {
-        newOutput.push({ type: 'response', content: [{ text: `Command not found: ${cmd}`, style: 'error' }] });
+        newOutput.push({ id: Date.now() + 6, type: 'response', content: [{ text: `Command not found: ${cmd}`, style: 'error' }] });
       }
       setOutput(newOutput);
     } else {
-        setOutput(prev => [...prev, { type: 'command', text: promptSymbol }]);
+        setOutput(newOutput);
     }
   };
 
-  // --- Render Logic ---
-  const renderOutputLine = (line, index) => {
-    if (line.type === 'command') {
-      return <Text key={index} style={[styles.outputText, {fontFamily}]}>{line.text}</Text>;
+  const renderOutputLine = ({ item }) => {
+    const baseTextStyle = { ...styles.outputText, fontFamily };
+    if (item.type === 'command') {
+      return <Text style={baseTextStyle}>{item.text}</Text>;
     }
-    // line.type === 'response'
     return (
-      <View key={index}>
-        {line.content.map((item, itemIndex) => (
-          <Text key={itemIndex} style={[styles.outputText, styles[item.style], {fontFamily}]}>
-            {item.text}
+      <View>
+        {item.content.map((part, index) => (
+          <Text key={index} style={[baseTextStyle, styles[part.style], part.preformatted && styles.preformatted]}>
+            {part.text}
           </Text>
         ))}
       </View>
@@ -372,23 +334,20 @@ const App = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.terminal}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.terminal}>
         <View style={styles.header}>
-            <View style={styles.controls}>
-                <View style={styles.dot} />
-                <View style={styles.dot} />
-                <View style={styles.dot} />
-            </View>
-          <Text style={styles.title}>OrbitOS Terminal</Text>
+            <View style={styles.controls}><View style={styles.dot} /><View style={styles.dot} /><View style={styles.dot} /></View>
+            <Text style={styles.title}>OrbitOS Terminal</Text>
         </View>
 
-        <ScrollView 
+        <FlatList 
+          ref={flatListRef}
+          data={output}
+          renderItem={renderOutputLine}
+          keyExtractor={(item) => item.id.toString()}
           style={styles.outputArea}
-          ref={scrollViewRef}
-          onContentSizeChange={() => scrollViewRef.current.scrollToEnd({ animated: true })}
-        >
-          {output.map(renderOutputLine)}
-        </ScrollView>
+          onContentSizeChange={() => flatListRef.current.scrollToEnd({ animated: true })}
+        />
 
         <View style={styles.command}>
           <Text style={[styles.prompt, {fontFamily}]}>{promptSymbol}</Text>
@@ -397,104 +356,48 @@ const App = () => {
             style={[styles.input, {fontFamily}]}
             value={input}
             onChangeText={setInput}
-            onSubmitEditing={() => {
-              handleCommand(input);
-              setInput('');
-            }}
+            onSubmitEditing={() => { handleCommand(input); setInput(''); }}
             autoCapitalize="none"
             autoCorrect={false}
             selectionColor={colors.accent}
             underlineColorAndroid="transparent"
             editable={!isSystemBricked}
+            blurOnSubmit={false}
           />
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 // --- Styles ---
 const colors = {
-    primary: '#006399',
     surface: '#1a1c1e',
     surfaceContainer: '#2e3133',
     onSurface: '#e2e2e5',
-    outline: '#8b9198',
     accent: '#00b4d8',
     error: '#ff4444',
     success: '#00c853',
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#141517',
-  },
-  terminal: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    margin: 5,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  header: {
-    backgroundColor: colors.surfaceContainer,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
+  container: { flex: 1, backgroundColor: '#141517' },
+  terminal: { flex: 1, backgroundColor: colors.surface, margin: 5, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.1)' },
+  header: { backgroundColor: colors.surfaceContainer, paddingVertical: 10, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderColor: 'rgba(255, 255, 255, 0.1)' },
   controls: { flexDirection: 'row', gap: 8, marginRight: 12 },
   dot: { width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(255, 255, 255, 0.2)' },
-  title: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  outputArea: {
-    flex: 1,
-    padding: 15,
-  },
-  outputText: {
-    color: colors.onSurface,
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  highlight: {
-    color: colors.accent,
-    fontWeight: '500',
-  },
-  error: {
-    color: colors.error,
-  },
-  success: {
-      color: colors.success,
-  },
-  command: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    backgroundColor: colors.surfaceContainer,
-    borderTopWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  prompt: {
-    color: colors.accent,
-    fontSize: 14,
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    color: colors.onSurface,
-    fontSize: 14,
-    padding: 0, // Important for Android layout
-  },
+  title: { color: colors.accent, fontSize: 14, fontWeight: '500' },
+  outputArea: { flex: 1, padding: 15 },
+  outputText: { color: colors.onSurface, fontSize: 14, lineHeight: 22 },
+  highlight: { color: colors.accent, fontWeight: '500' },
+  error: { color: colors.error },
+  success: { color: colors.success },
+  preformatted: { fontFamily: 'monospace', lineHeight: 16 },
+  command: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 12, backgroundColor: colors.surfaceContainer, borderTopWidth: 1, borderColor: 'rgba(255, 255, 255, 0.1)' },
+  prompt: { color: colors.accent, fontSize: 14, marginRight: 8 },
+  input: { flex: 1, color: colors.onSurface, fontSize: 14, padding: 0 },
 });
 
 export default App;
+
 
