@@ -1,10 +1,28 @@
 plugins {
-    id 'com.android.application' version '8.1.1' apply false
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
+android {
+    namespace 'com.example.test' // change to your package
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.example.test"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
     }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.0"
 }
